@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { NYC_CENTER, MAP_CONFIG } from '@/utils/constants';
 import { Filters } from '@/components/Layout/Sidebar';
 
 // Types
@@ -32,8 +31,16 @@ interface MapUpdaterProps {
   filters: Filters;
 }
 
+// NYC Center coordinates
+const NYC_CENTER: [number, number] = [40.7128, -74.0060];
+const DEFAULT_ZOOM = 11;
+
 // Fix for default markers in react-leaflet
-delete L.Icon.Default.prototype._getIconUrl;
+// Only delete if the property exists
+if (L.Icon.Default.prototype._getIconUrl) {
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
+}
+
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
@@ -43,30 +50,33 @@ L.Icon.Default.mergeOptions({
 // Custom markers for different project types
 const createCustomIcon = (type: string): L.DivIcon => {
   const colors: Record<string, string> = {
-    'NB': '#ff4444', // New Building - Red
-    'A1': '#44ff44', // Alteration Type 1 - Green  
-    'A2': '#4444ff', // Alteration Type 2 - Blue
-    'A3': '#ffff44', // Alteration Type 3 - Yellow
-    'DM': '#ff44ff', // Demolition - Magenta
-    'default': '#44ffff' // Default - Cyan
+    'NB': '#ef4444', // New Building - Red
+    'A1': '#22c55e', // Alteration Type 1 - Green  
+    'A2': '#3b82f6', // Alteration Type 2 - Blue
+    'A3': '#eab308', // Alteration Type 3 - Yellow
+    'DM': '#ec4899', // Demolition - Pink
+    'default': '#06b6d4' // Default - Cyan
   };
+
+  const color = colors[type] || colors.default;
 
   return L.divIcon({
     className: 'custom-marker',
     html: `<div style="
-      background-color: ${colors[type] || colors.default};
-      width: 12px;
-      height: 12px;
+      background-color: ${color};
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       border: 2px solid white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
     "></div>`,
-    iconSize: [12, 12],
-    iconAnchor: [6, 6]
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+    popupAnchor: [0, -8]
   });
 };
 
-const MapUpdater: React.FC<MapUpdaterProps> = ({ projects, filters }) => {
+const MapUpdater: React.FC<MapUpdaterProps> = ({ projects }) => {
   const map = useMap();
   
   useEffect(() => {
@@ -80,8 +90,12 @@ const MapUpdater: React.FC<MapUpdaterProps> = ({ projects, filters }) => {
       });
       
       if (group.getLayers().length > 0) {
-        map.fitBounds(group.getBounds(), { padding: [20, 20] });
+        const bounds = group.getBounds();
+        map.fitBounds(bounds, { padding: [50, 50] });
       }
+    } else {
+      // Reset to NYC center if no projects
+      map.setView(NYC_CENTER, DEFAULT_ZOOM);
     }
   }, [map, projects]);
 
@@ -102,7 +116,6 @@ const ConstructionMap: React.FC<ConstructionMapProps> = ({ projects = [], filter
       if (filters.projectType && project.jobType !== filters.projectType) {
         return false;
       }
-      // Add date filtering logic here if needed
       return true;
     });
   }, [projects, filters]);
@@ -119,14 +132,12 @@ const ConstructionMap: React.FC<ConstructionMapProps> = ({ projects = [], filter
   }
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
       <MapContainer
         center={NYC_CENTER}
-        zoom={MAP_CONFIG.defaultZoom}
-        minZoom={MAP_CONFIG.minZoom}
-        maxZoom={MAP_CONFIG.maxZoom}
-        className="h-full w-full"
-        scrollWheelZoom={true}
+        zoom={DEFAULT_ZOOM}
+        style={{ height: '100%', width: '100%' }}
+        className="z-0"
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -135,33 +146,28 @@ const ConstructionMap: React.FC<ConstructionMapProps> = ({ projects = [], filter
         
         <MapUpdater projects={filteredProjects} filters={filters} />
         
-        {filteredProjects.map(project => (
+        {filteredProjects.map((project) => (
           <Marker
             key={project.id}
             position={[project.latitude, project.longitude]}
             icon={createCustomIcon(project.jobType)}
             eventHandlers={{
-              click: () => setSelectedProject(project)
+              click: () => setSelectedProject(project),
             }}
           >
-            <Popup maxWidth={300}>
-              <div className="p-2">
-                <h3 className="font-semibold text-lg mb-2">
-                  {project.address}
-                </h3>
-                <div className="space-y-1 text-sm">
-                  <p><span className="font-medium">Job #:</span> {project.jobNumber}</p>
-                  <p><span className="font-medium">Type:</span> {project.workType}</p>
-                  <p><span className="font-medium">Status:</span> {project.jobStatus}</p>
-                  <p><span className="font-medium">Borough:</span> {project.borough}</p>
-                  {project.ownerName && (
-                    <p><span className="font-medium">Owner:</span> {project.ownerName}</p>
-                  )}
+            <Popup>
+              <div className="p-2 max-w-sm">
+                <h3 className="font-bold text-sm mb-1">{project.address}</h3>
+                <div className="text-xs space-y-1">
+                  <p><span className="font-semibold">Type:</span> {project.jobType}</p>
+                  <p><span className="font-semibold">Status:</span> {project.jobStatus}</p>
+                  <p><span className="font-semibold">Work:</span> {project.workType}</p>
+                  <p><span className="font-semibold">Borough:</span> {project.borough}</p>
                   {project.estimatedCost > 0 && (
-                    <p><span className="font-medium">Est. Cost:</span> ${project.estimatedCost.toLocaleString()}</p>
+                    <p><span className="font-semibold">Est. Cost:</span> ${project.estimatedCost.toLocaleString()}</p>
                   )}
                 </div>
-                {project.description && (
+                {project.description && project.description !== 'No description available' && (
                   <p className="mt-2 text-xs text-gray-600">
                     {project.description.substring(0, 150)}
                     {project.description.length > 150 ? '...' : ''}
@@ -174,30 +180,37 @@ const ConstructionMap: React.FC<ConstructionMapProps> = ({ projects = [], filter
       </MapContainer>
       
       {/* Map Legend */}
-      <div className="absolute bottom-4 left-4 bg-white p-3 rounded-lg shadow-lg z-1000 text-sm">
-        <h4 className="font-semibold mb-2">Project Types</h4>
+      <div className="absolute bottom-4 left-4 bg-white p-3 rounded-lg shadow-lg z-[1000] text-sm">
+        <h4 className="font-semibold mb-2 text-gray-800">Project Types</h4>
         <div className="space-y-1">
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
-            <span>New Building</span>
+            <div className="w-4 h-4 rounded-full bg-red-500 mr-2 border-2 border-white shadow"></div>
+            <span className="text-xs">New Building (NB)</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-            <span>Alteration (A1)</span>
+            <div className="w-4 h-4 rounded-full bg-green-500 mr-2 border-2 border-white shadow"></div>
+            <span className="text-xs">Alteration A1</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
-            <span>Alteration (A2)</span>
+            <div className="w-4 h-4 rounded-full bg-blue-500 mr-2 border-2 border-white shadow"></div>
+            <span className="text-xs">Alteration A2</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
-            <span>Alteration (A3)</span>
+            <div className="w-4 h-4 rounded-full bg-yellow-500 mr-2 border-2 border-white shadow"></div>
+            <span className="text-xs">Alteration A3</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-pink-500 mr-2"></div>
-            <span>Demolition</span>
+            <div className="w-4 h-4 rounded-full bg-pink-500 mr-2 border-2 border-white shadow"></div>
+            <span className="text-xs">Demolition (DM)</span>
           </div>
         </div>
+        {filteredProjects.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-gray-200">
+            <span className="text-xs text-gray-600">
+              Showing {filteredProjects.length} project{filteredProjects.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
