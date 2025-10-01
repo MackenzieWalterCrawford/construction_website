@@ -1,102 +1,216 @@
-import React, { useState, useEffect } from 'react';
-import Head from 'next/head';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import Header from '@/components/Layout/Header';
-import Sidebar, { Filters } from '@/components/Layout/Sidebar';
-import LoadingSpinner from '@/components/UI/LoadingSpinner';
-import { Project } from '@/components/Map/ConstructionMap';
+import Head from 'next/head';
 
-// Dynamically import the map component to avoid SSR issues
+// Dynamically import map to avoid SSR issues with Leaflet
 const ConstructionMap = dynamic(
   () => import('@/components/Map/ConstructionMap'),
-  { 
-    ssr: false,
-    loading: () => <LoadingSpinner />
-  }
+  { ssr: false }
 );
 
-const Home: React.FC = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<Filters>({
-    borough: '',
-    projectType: '',
-    dateRange: 'all'
-  });
+interface ConstructionProject {
+  id: string;
+  jobNumber: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  projectType: string;
+  workType: string;
+  status: string;
+  borough: string;
+  permitDate: string;
+  estimatedCompletion: string;
+  description: string;
+  ownerName: string;
+  contractor: string;
+  costEstimate: number;
+  floorCount: number;
+}
+
+export default function Home() {
+  const [projects, setProjects] = useState<ConstructionProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<ConstructionProject | null>(null);
 
   useEffect(() => {
-    fetchConstructionData();
+    fetchProjects();
   }, []);
 
-  const fetchConstructionData = async (): Promise<void> => {
+  const fetchProjects = async () => {
     try {
-      setLoading(true);
       const response = await fetch('/api/construction');
-      if (!response.ok) throw new Error('Failed to fetch data');
-      const data: Project[] = await response.json();
-      setProjects(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      const data = await response.json();
+      setProjects(data.data || []);
+    } catch (error) {
+      console.error('Error fetching projects:', error);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleProjectClick = (project: ConstructionProject) => {
+    setSelectedProject(project);
+  };
+
   return (
     <>
       <Head>
-        <title>NYC Construction Map - Real-time Construction Projects</title>
-        <meta name="description" content="Interactive map showing real-time construction projects across New York City" />
+        <title>NYC Construction Map</title>
+        <meta name="description" content="Interactive map of NYC construction projects" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" href="/favicon.ico" />
-        <link 
-          rel="stylesheet" 
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-          crossOrigin=""
-        />
       </Head>
 
-      <div className="flex flex-col h-screen bg-gray-50">
-        <Header />
-        
-        <div className="flex flex-1 overflow-hidden">
-          <Sidebar 
-            filters={filters}
-            onFiltersChange={setFilters}
-            projectCount={projects.length}
-            loading={loading}
-          />
-          
-          <main className="flex-1 relative">
-            {error ? (
-              <div className="flex items-center justify-center h-full">
+      <main className="h-screen flex flex-col">
+        {/* Header */}
+        <header className="bg-blue-600 text-white p-4 shadow-lg z-10">
+          <div className="container mx-auto">
+            <h1 className="text-2xl font-bold">NYC Construction Map</h1>
+            <p className="text-sm text-blue-100">
+              {loading ? 'Loading...' : `Showing ${projects.length} active projects`}
+            </p>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Map Container */}
+          <div className="flex-1 relative">
+            {loading ? (
+              <div className="w-full h-full flex items-center justify-center bg-gray-100">
                 <div className="text-center">
-                  <h2 className="text-xl font-semibold text-gray-800 mb-2">
-                    Error Loading Data
-                  </h2>
-                  <p className="text-gray-600 mb-4">{error}</p>
-                  <button 
-                    onClick={fetchConstructionData}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-                  >
-                    Try Again
-                  </button>
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading construction data...</p>
                 </div>
               </div>
             ) : (
               <ConstructionMap 
-                projects={projects}
-                filters={filters}
-                loading={loading}
+                projects={projects} 
+                onProjectClick={handleProjectClick}
               />
             )}
-          </main>
+          </div>
+
+          {/* Sidebar - Project Details */}
+          {selectedProject && (
+            <aside className="w-96 bg-white shadow-xl overflow-y-auto border-l border-gray-200">
+              <div className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <h2 className="text-xl font-bold text-gray-900">Project Details</h2>
+                  <button
+                    onClick={() => setSelectedProject(null)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Address</h3>
+                    <p className="text-gray-900">{selectedProject.address}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Job Number</h3>
+                      <p className="text-gray-900">{selectedProject.jobNumber}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Borough</h3>
+                      <p className="text-gray-900">{selectedProject.borough}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Project Type</h3>
+                      <p className="text-gray-900">{selectedProject.projectType}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Status</h3>
+                      <p className={`font-medium ${
+                        selectedProject.status === 'Approved' ? 'text-green-600' :
+                        selectedProject.status === 'In Progress' ? 'text-blue-600' :
+                        'text-gray-600'
+                      }`}>
+                        {selectedProject.status}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Description</h3>
+                    <p className="text-gray-900">{selectedProject.description}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Floor Count</h3>
+                      <p className="text-gray-900">{selectedProject.floorCount} floors</p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Cost Estimate</h3>
+                      <p className="text-gray-900">
+                        ${selectedProject.costEstimate.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Permit Date</h3>
+                      <p className="text-gray-900">
+                        {new Date(selectedProject.permitDate).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Est. Completion</h3>
+                      <p className="text-gray-900">
+                        {new Date(selectedProject.estimatedCompletion).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Owner</h3>
+                    <p className="text-gray-900">{selectedProject.ownerName}</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 uppercase mb-1">Contractor</h3>
+                    <p className="text-gray-900">{selectedProject.contractor}</p>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          )}
         </div>
-      </div>
+
+        {/* Legend */}
+        <div className="absolute bottom-4 left-4 bg-white p-4 rounded-lg shadow-lg z-[1000]">
+          <h3 className="font-bold text-sm mb-2">Project Types</h3>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-red-500"></div>
+              <span className="text-sm">New Building</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-blue-500"></div>
+              <span className="text-sm">Alteration</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-green-500"></div>
+              <span className="text-sm">Renovation</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full bg-orange-500"></div>
+              <span className="text-sm">Demolition</span>
+            </div>
+          </div>
+        </div>
+      </main>
     </>
   );
-};
-
-export default Home;
+}
